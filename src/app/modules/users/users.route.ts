@@ -62,7 +62,7 @@ router.post(
   auth(USER_ROLE.user, USER_ROLE.admin, USER_ROLE.superAdmin),
   UserController.generateTwoFactorSecret,
 );
-
+// enableTwoFactor --  include code 
 router.post(
   "/enable",
   auth(USER_ROLE.user, USER_ROLE.admin, USER_ROLE.superAdmin),

@@ -39,7 +39,7 @@ class TwoFactorService {
   /**
    * Verify 2FA token and enable 2FA for user
    */
-  async enableTwoFactor(userId: string) {
+  async enableTwoFactor(userId: string, code:string) {
     const user = await users.findById(userId);
     if (!user || !user.twoFactorSecret) {
       throw new AppError(
@@ -52,12 +52,12 @@ class TwoFactorService {
     const isValid = speakeasy.totp.verify({
       secret: user.twoFactorSecret,
       encoding: "base32",
-      //token : send the 6 digit code
+      token : code,
       // that is altranative
-      token: speakeasy.totp({
-        secret: user.twoFactorSecret,
-        encoding: "base32",
-      }),
+      // token: speakeasy.totp({
+      //   secret: user.twoFactorSecret,
+      //   encoding: "base32",
+      // }),
       window: 2, // Allow 2 time steps before and after
     });
 

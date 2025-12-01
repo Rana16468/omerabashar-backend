@@ -111,7 +111,7 @@ const generateTwoFactorSecret: RequestHandler = catchAsync(async (req, res) => {
 const enableTwoFactor: RequestHandler = catchAsync(async (req, res) => {
   const userId = req.user.id;
 
-  const result = await userTwoFactorService.enableTwoFactor(userId);
+  const result = await userTwoFactorService.enableTwoFactor(userId, req.body.code);
 
   sendResponse(res, {
     statusCode: 200,
