@@ -6,7 +6,7 @@ import { commonAIFunction } from "./ocr_ai.utils";
 import {  universalPrompt } from "./ocr_ai.constant";
 import QueryBuilder from "../../builder/QueryBuilder";
 import {PutObjectCommand } from "@aws-sdk/client-s3";
-import { s3 } from "../../utils/uploadToS3";
+import { s3, uploadToS3 } from "../../utils/uploadToS3";
 
 import config from "../../config";
 import { ocrtechs } from "./ocr_ai.model";
@@ -172,14 +172,12 @@ const extractPassportData = (text: string): PassportCardData => {
 const ocrIntoDb = async (req: Request & RequestWithFile, userId: string) => {
   try {
    
-    const file = req.file;
+    const file = req.file as any;
     if (!file) throw new AppError(status.BAD_REQUEST, "File not provided");
-
-    const filePath = file.path.replace(/\\/g, "/");
+    let filePath
     const { ocrType } = req.body as any;
-
-
-    const extractedData = await commonAIFunction(filePath, universalPrompt);
+    const extractedData = await commonAIFunction(file.path.replace(/\\/g, "/"), universalPrompt);
+    filePath=  await uploadToS3(file, config.file_path);
 
     const { url: textImageUrl } = await textToImageBuffer(extractedData);
 

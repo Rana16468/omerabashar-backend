@@ -1,3 +1,4 @@
+import { ocrtechs } from './../ocr_ai/ocr_ai.model';
 import mongoose from "mongoose";
 import httpStatus from "http-status";
 import fs from "fs";
@@ -12,6 +13,10 @@ import config from "../../config";
 import QueryBuilder from "../../builder/QueryBuilder";
 import { TUser } from "../users/users.interface";
 import { uploadToS3 } from "../../utils/uploadToS3";
+import { deleteFromS3 } from "../../utils/deleteFromS3";
+import currentsubscriptions from "../current_subscription/current_subscription.model";
+import helpsupports from "../helpsupport/helpsupport.model";
+import paypalpayments from '../paypalpayment/paypalpayment.model';
 
 const loginUserIntoDb = async (payload: {
   email: string;
@@ -269,6 +274,7 @@ const changeMyProfileIntoDb = async (
   }
 };
 
+
 const findByAllUsersAdminIntoDb = async (query: Record<string, unknown>) => {
   try {
     const allUsersdQuery = new QueryBuilder(
@@ -298,23 +304,11 @@ const findByAllUsersAdminIntoDb = async (query: Record<string, unknown>) => {
   }
 };
 
-const deleteFiles = (filePaths: string[] | string | undefined) => {
-  if (!filePaths) return;
-  const files = Array.isArray(filePaths) ? filePaths : [filePaths];
-  files.forEach((filePath) => {
-    try {
-      const fullPath = path.resolve(filePath);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-        console.log(`Deleted file: ${fullPath}`);
-      }
-    } catch (err) {
-      console.error(`Failed to delete file ${filePath}:`, err);
-    }
-  });
-};
 
-export const deleteAccountIntoDb = async (id: string) => {
+
+ const deleteAccountIntoDb = async (id: string) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     const user = await users.findOne(
       {
@@ -324,37 +318,59 @@ export const deleteAccountIntoDb = async (id: string) => {
         status: USER_ACCESSIBILITY.isProgress,
       },
       { photo: 1, role: 1 },
-    );
+    ).session(session);
 
     if (!user) {
-      throw new AppError(
-        httpStatus.NOT_FOUND,
-        "User account not found for deletion.",
-      );
+      throw new AppError(httpStatus.NOT_FOUND, "User account not found.");
     }
 
-    // Prevent Super Admin deletion
     if (user.role === USER_ROLE.superAdmin) {
-      throw new AppError(
-        httpStatus.FORBIDDEN,
-        "Super Admin accounts cannot be deleted.",
-      );
+      throw new AppError(httpStatus.FORBIDDEN, "Super Admin cannot be deleted.");
     }
+    const s3DeletePromises: Promise<any>[] = [];
 
     if (user.photo) {
-      deleteFiles(user.photo);
+      s3DeletePromises.push(deleteFromS3(user.photo));
     }
+
+    await currentsubscriptions.deleteOne({ userId: id }).session(session);
+    await helpsupports.deleteMany({ userId: id }).session(session);
+
+    const ocrFiles = await ocrtechs
+      .find({ userId: user._id })
+      .select("filePath textImageUrl")
+      .lean()
+      .session(session);
+
+    ocrFiles?.forEach((item) => {
+      if (item.filePath) s3DeletePromises.push(deleteFromS3(item.filePath));
+      if (item.textImageUrl) s3DeletePromises.push(deleteFromS3(item.textImageUrl));
+    });
+
+    await ocrtechs.deleteMany({ userId: id }).session(session);
+
+    await paypalpayments.deleteMany({ userId: id }).session(session);
+
+    await users.deleteOne({ _id: id }).session(session);
+
+    await Promise.all(s3DeletePromises);
+
+    await session.commitTransaction();
+    session.endSession();
 
     return {
       status: true,
-      message: "successfully  delete",
+      message: "User account and all related data deleted successfully.",
     };
-  } catch (error: any) {
-    console.error("Delete account error:", error);
+
+  } catch (error) {
+  
+    await session.abortTransaction();
+    session.endSession();
+
     throw new AppError(
-      httpStatus.SERVICE_UNAVAILABLE,
-      "Delete Account Into DB server unavailable",
-      error,
+      httpStatus.INTERNAL_SERVER_ERROR,
+      "Delete operation failed. All DB changes rolled back.",
     );
   }
 };
