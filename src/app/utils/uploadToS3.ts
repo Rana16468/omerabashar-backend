@@ -44,7 +44,7 @@ export const uploadToS3 = async (
     fs.unlinkSync(file?.path?.replace(/\\/g, "/"));
 
     // 6. Return correct S3 link
-    const url = `https://${config.s3_bucket.aws_bucket_name}.s3.${config.s3_bucket.aws_bucket_region}.amazonaws.com/${fileName}`;
+    const url = `https://${config.s3_bucket.aws_bucket_name}.s3.${config.s3_bucket.aws_bucket_region}.amazonaws.com${fileName}`;
 
     return url;
   } catch (error) {
