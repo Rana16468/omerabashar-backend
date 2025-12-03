@@ -24,6 +24,10 @@ export const uploadToS3 = async (
   if (!fs.existsSync(file?.path?.replace(/\\/g, "/"))) {
     throw new Error("File not found on server");
   }
+
+  // ✅ ONLY FIX ADDED: remove leading + trailing slashes in folder
+  folder = folder.replace(/^\/+|\/+$/g, "");
+
   const fileStream = fs.createReadStream(file?.path?.replace(/\\/g, "/"));
   const fileName = `${folder}/${Date.now()}-${file.originalname
     .replace(/\s+/g, "-")
@@ -37,14 +41,14 @@ export const uploadToS3 = async (
   };
 
   try {
-    // 4. Upload
+    // Upload
     await s3.send(new PutObjectCommand(params));
 
-    // 5. Remove local file
+    // Remove local file
     fs.unlinkSync(file?.path?.replace(/\\/g, "/"));
 
-    // 6. Return correct S3 link
-    const url = `https://${config.s3_bucket.aws_bucket_name}.s3.${config.s3_bucket.aws_bucket_region}.amazonaws.com${fileName}`;
+    // Return correct S3 link
+    const url = `https://${config.s3_bucket.aws_bucket_name}.s3.${config.s3_bucket.aws_bucket_region}.amazonaws.com/${fileName}`;
 
     return url;
   } catch (error) {
