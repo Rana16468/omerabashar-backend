@@ -306,19 +306,16 @@ const findByAllUsersAdminIntoDb = async (query: Record<string, unknown>) => {
 
 
 
- const deleteAccountIntoDb = async (id: string) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+const deleteAccountIntoDb = async (id: string) => {
   try {
-    const user = await users.findOne(
-      {
+    const user = await users
+      .findOne({
         _id: id,
         isDelete: false,
         isVerify: true,
         status: USER_ACCESSIBILITY.isProgress,
-      },
-      { photo: 1, role: 1 },
-    ).session(session);
+      })
+      .lean();
 
     if (!user) {
       throw new AppError(httpStatus.NOT_FOUND, "User account not found.");
@@ -333,47 +330,42 @@ const findByAllUsersAdminIntoDb = async (query: Record<string, unknown>) => {
       s3DeletePromises.push(deleteFromS3(user.photo));
     }
 
-    await currentsubscriptions.deleteOne({ userId: id }).session(session);
-    await helpsupports.deleteMany({ userId: id }).session(session);
-
     const ocrFiles = await ocrtechs
       .find({ userId: user._id })
       .select("filePath textImageUrl")
-      .lean()
-      .session(session);
+      .lean();
 
-    ocrFiles?.forEach((item) => {
+    for (const item of ocrFiles) {
       if (item.filePath) s3DeletePromises.push(deleteFromS3(item.filePath));
       if (item.textImageUrl) s3DeletePromises.push(deleteFromS3(item.textImageUrl));
-    });
+    }
+    await Promise.all([
+      currentsubscriptions.deleteOne({ userId: id }),
+      helpsupports.deleteMany({ userId: id }),
+      ocrtechs.deleteMany({ userId: id }),
+      paypalpayments.deleteMany({ userId: id }),
 
-    await ocrtechs.deleteMany({ userId: id }).session(session);
+      // Set user as deleted (instead of hard delete)
+      users.deleteOne({ _id: id }),
 
-    await paypalpayments.deleteMany({ userId: id }).session(session);
-
-    await users.deleteOne({ _id: id }).session(session);
-
-    await Promise.all(s3DeletePromises);
-
-    await session.commitTransaction();
-    session.endSession();
+      ...s3DeletePromises, 
+    ]);
 
     return {
       status: true,
       message: "User account and all related data deleted successfully.",
     };
-
-  } catch (error) {
-  
-    await session.abortTransaction();
-    session.endSession();
+  } catch (error:any) {
+    console.log("ACCOUNT DELETE ERROR =>", error); // DEBUG
 
     throw new AppError(
       httpStatus.INTERNAL_SERVER_ERROR,
-      "Delete operation failed. All DB changes rolled back.",
+      error?.message || "Delete operation failed."
     );
   }
 };
+
+
 
 const getUserGrowthIntoDb = async (query: { year?: string }) => {
   try {
