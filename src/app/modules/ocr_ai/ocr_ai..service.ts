@@ -10,6 +10,7 @@ import { s3, uploadToS3 } from "../../utils/uploadToS3";
 
 import config from "../../config";
 import { ocrtechs } from "./ocr_ai.model";
+import { deleteFromS3 } from "../../utils/deleteFromS3";
 
 const getTests = async () => {
   //   if you are using a database, you would typically query the database here
@@ -304,31 +305,49 @@ const findBySpecificOCRInDb=async(id:string)=>{
   }
 };
 
-const deleteOCRIntoDb=async(id:string)=>{
 
-   try{
+const deleteOCRIntoDb = async (id: string) => {
+  try {
+   
+    const ocrData = await ocrtechs
+      .findById(id)
+      .select("filePath textImageUrl")
+      .lean();
 
-     const isExistOcr=await ocrtechs.exists({_id:id}).lean();
-     if(!isExistOcr){
-      throw new AppError(status.NOT_FOUND,'this information not exist is the database')
-     };
-     const result=await ocrtechs.findByIdAndDelete(id);
-     if(!result){
-      throw new AppError(status.NOT_EXTENDED, 'issues by the ocr delete section','');
-     };
-     return {
-      status:true ,
-      message:"successfully delete  "
-     }
+    if (!ocrData) {
+      throw new AppError(
+        status.NOT_FOUND,
+        "OCR record does not exist in the database"
+      );
+    }
 
-   }
-     catch(error:any){
+    await Promise.all([
+      ocrData.filePath ? deleteFromS3(ocrData.filePath) : null,
+      ocrData.textImageUrl ? deleteFromS3(ocrData.textImageUrl) : null,
+    ]);
+
+    const deleted = await ocrtechs.findByIdAndDelete(id);
+
+    if (!deleted) {
+      throw new AppError(
+        status.NOT_EXTENDED,
+        "Failed to delete OCR record from database"
+      );
+    }
+
+    // 4. Final response
+    return {
+      status: true,
+      message: "OCR deleted successfully",
+    };
+  } catch (error: any) {
     throw new AppError(
       status.SERVICE_UNAVAILABLE,
-      `${error.message} - find by the specific ocr section failed`
+      `${error.message} - OCR delete operation failed`
     );
   }
-}
+};
+
 
 
 const OCRService = {
