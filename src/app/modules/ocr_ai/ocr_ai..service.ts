@@ -274,15 +274,18 @@ async function textToImageBuffer(data: any) {
   const buffer = canvas.toBuffer("image/png");
   const fileName = `ocr-${Date.now()}.png`;
 
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: config.s3_bucket.aws_bucket_name,
-      Key: fileName,
-      Body: buffer,
-      ContentType: "image/png",
-      ACL: "public-read",
-    })
-  );
+await s3.send(
+  new PutObjectCommand({
+    Bucket: config.s3_bucket.aws_bucket_name,
+    Key: fileName,
+    Body: buffer,
+    ContentType: "image/png",
+    ContentEncoding: "base64",
+    CacheControl: "public, max-age=31536000",
+    ACL: "public-read",
+  })
+);
+
 
   const imageUrl = `https://${config.s3_bucket.aws_bucket_name}.s3.${config.s3_bucket.aws_bucket_region}.amazonaws.com/${fileName}`;
 
